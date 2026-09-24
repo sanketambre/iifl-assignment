@@ -15,11 +15,17 @@ from typing import Dict, List, Optional
 
 from src.backend.config import POLICY_DIR
 
+# Words that carry no policy meaning. Unseen words are scored as maximally
+# informative, which is what makes an out-of-scope question escalate - so
+# ordinary question filler has to be excluded, or it is mistaken for evidence
+# that the corpus cannot answer.
 STOPWORDS = {
     "the", "and", "for", "are", "but", "not", "you", "your", "with", "that",
     "this", "have", "has", "was", "will", "can", "would", "what", "when",
     "where", "how", "why", "which", "from", "about", "they", "than", "any",
     "all", "been", "does", "did", "get", "want", "need", "please", "every",
+    "much", "many", "without", "tell", "know", "like", "could", "should",
+    "into", "there", "their", "them", "then", "some", "just", "also", "make",
 }
 
 # Customer wording mapped onto policy wording. Each entry is here because a
@@ -75,13 +81,18 @@ def _stem(token: str) -> str:
 def tokenize(text: str, expand: bool = False) -> List[str]:
     """Lowercase, drop stopwords, optionally add synonyms, then stem."""
     tokens: List[str] = []
-    for word in re.findall(r"[a-z0-9][a-z0-9'-]*", text.lower()):
-        word = word.strip("'-")
-        if len(word) < 3 or word in STOPWORDS:
-            continue
-        tokens.append(word)
-        if expand:
-            tokens.extend(SYNONYMS.get(word, []))
+    for found in re.findall(r"[a-z0-9][a-z0-9'-]*", text.lower()):
+        found = found.strip("'-")
+        # A hyphenated compound counts as its parts too, so the policy's
+        # "part-prepayment" is reachable from a customer asking about
+        # "prepayment", and "auto-debit" from "debit".
+        words = [found] + found.split("-") if "-" in found else [found]
+        for word in words:
+            if len(word) < 3 or word in STOPWORDS:
+                continue
+            tokens.append(word)
+            if expand:
+                tokens.extend(SYNONYMS.get(word, []))
     return [_stem(t) for t in tokens]
 
 
