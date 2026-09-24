@@ -1,0 +1,8 @@
+flask>=3.0.0
+requests>=2.31.0
+# urllib3 2.x warns noisily on macOS system Python (LibreSSL). Pin for clean output.
+urllib3<2
+python-dotenv>=1.0.0
+pypdf>=4.0.0          # reads the policy PDFs
+fpdf2>=2.7.0          # tools/make_pdfs.py only, not needed at runtime
+pytest>=7.4.0

@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Timestamped batch runs are throwaway; outputs/live_run.csv is kept as evidence.
+src/tester/outputs/results_*.csv
+
+# Real customer questions would be PII; never commit the usage log.
+logs/
+
+.claude/

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "Q1",
+    "question": "I have been paying my home loan for two years and want to close it early. Will I be charged a foreclosure fee? It is a floating rate loan.",
+    "expected_action": "respond",
+    "note": "Directly answered by POL-PREPAY-01: nil charge for floating rate individual borrowers, past the 12 EMI lock-in."
+  },
+  {
+    "id": "Q2",
+    "question": "How do I update the mobile number registered on my loan account?",
+    "expected_action": "respond",
+    "note": "Directly answered by POL-KYC-02, including the OTP-on-old-number constraint."
+  },
+  {
+    "id": "Q3",
+    "question": "My EMI auto debit failed last month. What charges will I have to pay?",
+    "expected_action": "respond",
+    "note": "Answered by FAQ-EMI-03: Rs 500 bounce charge plus 2% per month late payment interest."
+  },
+  {
+    "id": "Q4",
+    "question": "Can I move my EMI date to the 20th of every month?",
+    "expected_action": "respond",
+    "note": "Partially answered by FAQ-EMI-03. The date change is allowed but the 20th is not an available option, so the correct answer is a grounded no."
+  },
+  {
+    "id": "Q5",
+    "question": "What interest rate will I get on a new two wheeler loan in Pune, and what is my eligibility?",
+    "expected_action": "escalate",
+    "note": "Deliberately out of scope. No policy document covers pricing or eligibility, so the agent must escalate rather than guess."
+  }
+]
