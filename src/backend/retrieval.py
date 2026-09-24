@@ -51,6 +51,7 @@ class Chunk:
     doc_title: str
     section: str
     text: str
+    file_name: str = ""  # so the UI can offer the source PDF for download
 
     @property
     def citation(self) -> str:
@@ -139,14 +140,15 @@ def load_chunks(policy_dir: Optional[Path] = None) -> List[Chunk]:
             match = HEADING_PATTERN.match(stripped)
             if match and len(stripped) <= MAX_HEADING_LENGTH:
                 if section and body:
-                    chunks.append(Chunk(doc_id, title, section, "\n".join(body).strip()))
+                    chunks.append(
+                        Chunk(doc_id, title, section, "\n".join(body).strip(), path.name))
                 # The number is document formatting, not part of the name, so
                 # citations read "POL-PREPAY-01 / Foreclosure charges".
                 section, body = match.group(2).strip(), []
             elif section is not None and stripped:
                 body.append(stripped)
         if section and body:
-            chunks.append(Chunk(doc_id, title, section, "\n".join(body).strip()))
+            chunks.append(Chunk(doc_id, title, section, "\n".join(body).strip(), path.name))
 
     if not chunks:
         raise ValueError(

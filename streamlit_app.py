@@ -15,6 +15,9 @@ import sys
 
 import streamlit as st
 
+# Must be the first Streamlit call on the page.
+st.set_page_config(page_title="Customer Support", layout="centered")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Streamlit Cloud supplies the key through st.secrets rather than a .env file.
@@ -27,6 +30,6 @@ try:
 except Exception:
     pass  # no secrets file locally, which is fine: .env covers it
 
-from src.frontend.ui import render
+from src.frontend.ui import build_navigation
 
-render()
+build_navigation().run()

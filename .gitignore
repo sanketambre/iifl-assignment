@@ -10,7 +10,7 @@ __pycache__/
 
 # Timestamped batch runs are throwaway; live_run.csv is kept as evidence.
 src/tester/outputs/results_*.csv
-src/tester/outputs/live_*.csv
+# src/tester/outputs/live_*.csv
 
 # Real customer questions would be PII; never commit the usage log.
 logs/

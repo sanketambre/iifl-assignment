@@ -176,6 +176,6 @@ src/tester/                 tests, split by what they cover
   outputs/                  CSV results
 
 data/policies/              3 synthetic policy PDFs (what the agent reads)
-data/questions.json         5 sample questions with expected actions
+data/questions.json         10 test questions, 6 answerable and 4 escalating
 logs/query_log.csv          every question asked through the UI (gitignored)
 ```

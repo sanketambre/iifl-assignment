@@ -5,9 +5,14 @@ recognises. The agent's internal vocabulary - escalate, grounded, retrieval
 score - never reaches the page; a customer is told in plain words whether they
 have an answer or whether a person is picking it up. The diagnostics that
 vocabulary comes from are one click away for anyone reviewing the system.
+
+Each policy document gets its own page, so a citation on an answer is something
+the customer can actually go and read rather than take on trust.
 """
 
 from __future__ import annotations
+
+import re
 
 import streamlit as st
 
@@ -20,6 +25,12 @@ SAMPLE_QUESTIONS = [
     "How do I update the mobile number on my loan account?",
     "My EMI auto debit failed last month. What charges will I pay?",
     "Can I move my EMI date to the 20th of every month?",
+    "How long does it take to get my NOC after I close the loan?",
+    "Which documents are accepted as proof of identity?",
+    "Is there a grace period if I pay my EMI a day late?",
+    "Can I pay my EMI with a credit card?",
+    "How much can I part-prepay without a charge?",
+    "How often do I need to complete re-KYC?",
 ]
 
 # What the customer is told when the agent hands the question on. The internal
@@ -42,13 +53,23 @@ def get_agent() -> SupportAgent:
     return SupportAgent()
 
 
-def show_answer(response) -> None:
-    data = response.to_dict()
+@st.cache_resource
+def get_documents() -> dict:
+    """The indexed sections grouped by document, one entry per policy."""
+    documents: dict = {}
+    for chunk in get_agent().index.chunks:
+        entry = documents.setdefault(chunk.doc_title, {
+            "doc_id": chunk.doc_id, "file_name": chunk.file_name, "sections": []})
+        entry["sections"].append(chunk)
+    return documents
 
+
+def show_answer(response) -> None:
     if response.action == "respond":
         st.markdown(response.answer)
         document, _, section = response.source.partition(" / ")
-        st.caption("Based on {} in policy {}".format(section, document))
+        st.caption("Based on {} in policy {}. You can read it from the menu on "
+                   "the left.".format(section, document))
     else:
         reason = response.diagnostics.get("escalation_reason", "")
         st.markdown(
@@ -58,12 +79,10 @@ def show_answer(response) -> None:
         st.caption(HANDOVER_REASON.get(reason, "I couldn't answer this confidently."))
 
     with st.expander("Technical details"):
-        st.json(data)
+        st.json(response.to_dict())
 
 
-def render() -> None:
-    st.set_page_config(page_title="Customer Support", page_icon="*", layout="centered")
-
+def chat_page() -> None:
     st.title("Customer Support")
     st.caption(
         "Ask about loan prepayment and foreclosure, KYC and account updates, or "
@@ -71,30 +90,27 @@ def render() -> None:
         "and anything they don't cover goes to a person."
     )
 
-    with st.sidebar:
-        st.subheader("About this assistant")
-        st.write(
-            "It answers only from three policy documents and cites the section "
-            "it used. When the documents don't support a confident answer it "
-            "hands the question to a human rather than guessing."
-        )
-        st.divider()
-        st.caption("Model: {}".format(config.GEMINI_MODEL))
-        if st.button("Clear conversation"):
-            st.session_state.history = []
-            st.rerun()
-
     if "history" not in st.session_state:
         st.session_state.history = []
 
-    # Sample questions, shown only on an empty conversation so they do not
-    # clutter the page once someone is actually using it.
+    with st.sidebar:
+        st.caption("Answers come only from the policies listed above.")
+        if st.session_state.history and st.button("Start a new conversation"):
+            st.session_state.history = []
+            st.rerun()
+
+    # Open on an empty conversation and collapsed afterwards, so the suggestions
+    # lead the way in but stay reachable once someone is mid-conversation. Two
+    # columns, because ten full-width buttons would push the chat off screen.
     asked = None
-    if not st.session_state.history:
-        st.write("**Try one of these**")
+    with st.expander("Suggested questions",
+                     expanded=not st.session_state.history):
+        columns = st.columns(2)
         for index, question in enumerate(SAMPLE_QUESTIONS):
-            if st.button(question, key="sample_{}".format(index), use_container_width=True):
-                asked = question
+            with columns[index % 2]:
+                if st.button(question, key="sample_{}".format(index),
+                             use_container_width=True):
+                    asked = question
 
     for entry in st.session_state.history:
         with st.chat_message("user"):
@@ -117,3 +133,40 @@ def render() -> None:
         show_answer(response)
 
     st.session_state.history.append({"question": question, "response": response})
+
+
+def document_page(title: str) -> None:
+    """One policy, in full.
+
+    Section bodies are written with st.text rather than markdown so the charge
+    tables keep the column alignment they have in the PDF.
+    """
+    entry = get_documents()[title]
+    st.title(title)
+    st.caption("Policy {} - {} sections".format(entry["doc_id"], len(entry["sections"])))
+
+    path = config.POLICY_DIR / entry["file_name"]
+    if path.exists():
+        st.download_button("Download the PDF", path.read_bytes(),
+                           file_name=entry["file_name"], mime="application/pdf")
+
+    st.divider()
+    for chunk in entry["sections"]:
+        st.subheader(chunk.section)
+        st.text(chunk.text)
+
+
+def build_navigation():
+    """The chat, plus one page per policy document."""
+    pages = [st.Page(chat_page, title="Ask a question", default=True, url_path="ask")]
+
+    for title in get_documents():
+        # A closure per document, each with its own URL so Streamlit can tell
+        # the pages apart.
+        def page(bound_title: str = title) -> None:
+            document_page(bound_title)
+
+        slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        pages.append(st.Page(page, title=title, url_path=slug))
+
+    return st.navigation({"Support": pages[:1], "Policy documents": pages[1:]})

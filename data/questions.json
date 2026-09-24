@@ -1,32 +1,62 @@
 [
   {
-    "id": "Q1",
+    "id": "Q01",
     "question": "I have been paying my home loan for two years and want to close it early. Will I be charged a foreclosure fee? It is a floating rate loan.",
     "expected_action": "respond",
-    "note": "Directly answered by POL-PREPAY-01: nil charge for floating rate individual borrowers, past the 12 EMI lock-in."
+    "note": "POL-PREPAY-01: nil charge for floating rate individual borrowers, past the 12 EMI lock-in."
   },
   {
-    "id": "Q2",
+    "id": "Q02",
     "question": "How do I update the mobile number registered on my loan account?",
     "expected_action": "respond",
-    "note": "Directly answered by POL-KYC-02, including the OTP-on-old-number constraint."
+    "note": "POL-KYC-02, including the constraint that the OTP goes to the existing number."
   },
   {
-    "id": "Q3",
+    "id": "Q03",
     "question": "My EMI auto debit failed last month. What charges will I have to pay?",
     "expected_action": "respond",
-    "note": "Answered by FAQ-EMI-03: Rs 500 bounce charge plus 2% per month late payment interest."
+    "note": "FAQ-EMI-03: Rs 500 bounce charge plus 2% per month late payment interest."
   },
   {
-    "id": "Q4",
+    "id": "Q04",
     "question": "Can I move my EMI date to the 20th of every month?",
     "expected_action": "respond",
-    "note": "Partially answered by FAQ-EMI-03. The date change is allowed but the 20th is not an available option, so the correct answer is a grounded no."
+    "note": "Partially covered. The change is allowed but the 20th is not an option, so the correct answer is a grounded no."
   },
   {
-    "id": "Q5",
+    "id": "Q05",
+    "question": "How long does it take to get my NOC after I close the loan?",
+    "expected_action": "respond",
+    "note": "POL-PREPAY-01: NOC within 7 working days, original documents within 30 calendar days."
+  },
+  {
+    "id": "Q06",
+    "question": "How much can I part-prepay in a year without being charged for it?",
+    "expected_action": "respond",
+    "note": "POL-PREPAY-01: 25% of principal outstanding per financial year, 2% on the excess."
+  },
+  {
+    "id": "Q07",
     "question": "What interest rate will I get on a new two wheeler loan in Pune, and what is my eligibility?",
     "expected_action": "escalate",
-    "note": "Deliberately out of scope. No policy document covers pricing or eligibility, so the agent must escalate rather than guess."
+    "note": "Failure case: out of scope. No policy covers pricing or eligibility, so the agent must not guess."
+  },
+  {
+    "id": "Q08",
+    "question": "Am I eligible for a top-up loan on my existing home loan?",
+    "expected_action": "escalate",
+    "note": "Failure case: plausible and adjacent, but no policy covers top-up loans. Tests that adjacency does not become a confident answer."
+  },
+  {
+    "id": "Q09",
+    "question": "",
+    "expected_action": "escalate",
+    "note": "Failure case: empty input. Escalates before retrieval runs."
+  },
+  {
+    "id": "Q10",
+    "question": "qwertyuiop zxcvbnm asdfgh lkjhgf",
+    "expected_action": "escalate",
+    "note": "Failure case: gibberish. Nothing clears the relevance floor, so it escalates without spending an API call."
   }
 ]
