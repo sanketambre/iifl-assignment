@@ -16,3 +16,4 @@ src/tester/outputs/live_*.csv
 logs/
 
 tools/make_*.py
+data/source/*
