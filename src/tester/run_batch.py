@@ -4,9 +4,13 @@
     python -m src.tester.run_batch                        # the 5 sample questions
     python -m src.tester.run_batch --input questions.txt  # one question per line
 
-Each row holds the answer and the signals that produced it, so a run can be
-reviewed in a spreadsheet. Results land in src/tester/outputs/. Exits non-zero
-if a graded question misses its expected action, so it can gate a CI job.
+This is how I check the agent against the real model rather than the test stub.
+Each row holds the answer and the signals that produced it, so a run can be read
+in a spreadsheet, and results land in src/tester/outputs/. It exits non-zero if a
+graded question misses its expected action, so it could gate a CI job.
+
+The pacing exists because Gemini's free tier allows five requests a minute; left
+unpaced, a five-question run trips the limit and every answer escalates.
 """
 
 from __future__ import annotations

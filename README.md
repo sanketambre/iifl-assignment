@@ -1,65 +1,28 @@
 # Policy-Aware Customer Support Agent
 
-A small agent that answers customer questions strictly from a set of policy
-documents, returns a structured result, and escalates to a human when the
-documents do not support a confident answer.
+This is a small support agent that answers customer questions about loans, KYC
+and EMI payments strictly from three policy documents, returns a structured
+result, and hands the question to a human whenever the documents do not support
+a confident answer. It runs as a local web app, and every question it is asked
+is recorded to a CSV with the reasoning behind the answer.
 
-## Setup
+## 1. How does it work?
 
-```bash
-pip install -r requirements.txt
-cp .env.example .env     # then paste your Gemini key into .env
-```
-
-Get a free Gemini API key at https://aistudio.google.com/apikey. **A key is
-required** — there is no offline fallback, so the app will not answer without
-one. The test suite is the exception: it patches the model call with its own
-stub, so `pytest` runs with no key and no network.
-
-```bash
-python app.py --check   # verifies the key and model before you run anything
-```
-
-**Free-tier quota.** Gemini's free tier allows 5 requests per minute and only
-**20 requests per day, per model, per project**. `run_batch.py` paces itself to stay
-under the per-minute limit. If you exhaust the daily budget, point `GEMINI_MODEL`
-at a different model (for example `gemini-flash-lite-latest`) — the daily quota is
-counted per model, so another one has its own budget.
-
-## Run
-
-```bash
-python app.py                 # web UI at http://127.0.0.1:5001
-python app.py --check         # verify the API key and model, then exit
-```
-
-Every question asked through the UI is appended to `logs/query_log.csv` with the
-answer and every signal behind it. That file is gitignored: in production it
-would hold raw customer questions, and so PII.
-
-Batch and tests, for when a UI is not wanted:
-
-```bash
-python -m src.tester.run_batch      # all sample questions -> CSV (uses API quota)
-python -m pytest src/tester -q      # tests: offline, no key needed
-```
-
-`run_batch.py` writes `src/tester/outputs/results_<timestamp>.csv`, one row per
-question: the answer and citation alongside every signal behind them (retrieval
-score, model confidence, whether the citation validated, escalation reason,
-latency, any error). It exits non-zero if a graded question misses its expected
-action, so it can gate a CI job. A committed example run is in
-`src/tester/outputs/live_run.csv`.
+A question first goes to a keyword search over the policy PDFs, which are split
+into one chunk per numbered section, each carrying a citation such as
+`POL-PREPAY-01 / Foreclosure charges`. An IDF-weighted score rates every chunk
+from 0 to 1 on how much of the question it covers; the top four go forward, and
+if nothing clears a relevance floor the agent escalates without calling the
+model at all. Those sections go to Gemini with a grounding-only prompt and a
+JSON response schema. Three signals must then agree before an answer is
+returned: retrieval found something relevant, the model reported the excerpts
+sufficient and grounded, and the citation it returned is one I actually supplied.
+Any failure drops confidence to low, and low confidence escalates.
 
 ## Example
 
-Input:
-
-```bash
-python -m src.cli "My EMI auto debit failed last month. What charges will I have to pay?"
-```
-
-Output:
+Asked through the UI: *"My EMI auto debit failed last month. What charges will I
+have to pay?"*
 
 ```json
 {
@@ -71,155 +34,148 @@ Output:
   "action": "respond",
   "diagnostics": {
     "retrieval_score": 0.575,
-    "retrieved": [
-      {
-        "citation": "FAQ-EMI-03 / What happens if my EMI payment bounces?",
-        "score": 0.575
-      },
-      {
-        "citation": "FAQ-EMI-03 / How do I register or replace a NACH mandate?",
-        "score": 0.363
-      },
-      {
-        "citation": "FAQ-EMI-03 / Can I change my EMI due date?",
-        "score": 0.349
-      },
-      {
-        "citation": "FAQ-EMI-03 / Is there a grace period?",
-        "score": 0.291
-      }
-    ],
     "retrieval_confidence": "high",
     "model_confidence": "high",
     "model_grounded": true,
     "citation_valid": true,
     "insufficient_information": false,
-    "provider": "gemini",
+    "model": "gemini-3.6-flash",
     "latency_ms": 6020
   }
 }
 ```
 
-The six top-level fields are the required contract. `diagnostics` is additive,
-and exists so the escalation decision can be audited without enabling logging.
+The six top-level fields are the contract. `diagnostics` is additive, so the
+escalation decision can be audited without turning on logging.
 
-## 1. How does it work?
-
-```
-question -> RETRIEVE          keyword scoring over policy sections
-                              top 4 sections; below a floor, escalate now
-         -> GENERATE          one Gemini call, grounded only on those sections
-         -> VERIFY            retrieval relevant? model grounded? citation real?
-                              any failure -> low confidence -> escalate
-         -> structured JSON
-```
-
-1. The three policy PDFs in `data/policies/` are split into one chunk per
-   section, each carrying a stable citation like `POL-PREPAY-01 / Foreclosure charges`.
-   `load_chunks()` is the only code that knows the documents are PDFs; everything
-   downstream works on chunks, which is why swapping the format touched one function.
-2. Retrieval is an IDF-weighted keyword match with a small customer-vocabulary
-   synonym map. It scores each chunk 0–1 by how much of the question's
-   information content it covers, and returns the top 3.
-3. If nothing clears a minimum relevance floor, the agent escalates without
-   calling the model at all.
-4. Otherwise the top chunks go to Gemini with a grounding-only system prompt and
-   a response schema, so the model returns typed JSON rather than prose. Transient
-   failures (overload, rate limit) are retried with backoff, honouring the
-   server's own retry hint; permanent ones are not retried.
-5. Three signals then have to agree before the agent responds: retrieval found
-   something relevant, the model reported the excerpts sufficient and grounded,
-   and the citation it returned is one we actually supplied. Any failure
-   downgrades confidence, and low confidence escalates.
+For contrast, *"what interest rate will I get on a two wheeler loan in Pune?"*
+returns `action: escalate` with an empty source — no policy covers pricing, and
+the agent is built to say so rather than guess.
 
 ## 2. Why this model / approach?
 
-Gemini Flash has a genuinely free tier and native structured output, which
-removes the usual JSON-parsing fragility. Retrieval is keyword-based on purpose:
-the corpus is three small documents in the same vocabulary customers use, so
-embeddings would add an index, a dependency and an opaque score for no accuracy
-gain at this size — and every score here is explainable. The LLM sits behind a
-one-function interface, so swapping providers is a single-file change.
+I chose Gemini Flash for its free tier and native structured output, which
+removes most of the usual JSON-parsing fragility. Retrieval is keyword-based on
+purpose: three small documents written in the customer's own vocabulary do not
+need embeddings, and every score stays inspectable, which matters when someone
+asks why a customer was told something. The model sits behind a single function,
+so changing provider is a one-file change.
 
 ## 3. What I would improve before production
 
-- **PDF ingestion**: section headings are found by an explicit mark that
-  `tools/make_pdfs.py` writes, which works because we generate the documents.
-  Third-party PDFs need heading detection from font size and position
-  (pdfplumber), plus handling for scans, multi-column layouts and tables.
-- **Retrieval**: keyword matching fails on paraphrase with no shared vocabulary.
-  Add embeddings with the keyword score retained as a hybrid signal and a
-  reranker, once the corpus outgrows a few dozen chunks.
-- **Evaluation**: thresholds here were tuned on five questions, which is not
-  evidence. Needs a labelled set with adversarial and out-of-scope cases, and
-  regression runs gating every prompt change.
-- **PII handling**: `logs/query_log.csv` currently stores questions verbatim.
-  Production needs redaction of account and phone numbers before both the prompt
-  and the log, plus a retention policy on the log itself.
-- **Policy versioning**: documents are read from disk at startup. Production
-  needs versioned documents, an effective-date check, and answers pinned to the
-  version that produced them.
-- **Escalation path**: escalation currently returns a message. It should create a
-  ticket with the retrieved context attached, and feed resolved escalations back
-  as evaluation cases.
-- **Throughput**: answers are generated one call at a time against a free-tier
-  quota. Production needs a paid tier, a response cache for repeated questions,
-  and a queue rather than per-request pacing.
+- **Retrieval.** Keyword matching misses paraphrase with no shared words. Add
+  embeddings as a hybrid signal with a reranker.
+- **Evaluation.** Thresholds were tuned on five questions, not measured. Needs a
+  labelled set with adversarial and out-of-scope cases, gating prompt changes.
+- **PII.** Questions are logged verbatim. Redact account and phone numbers before
+  both the prompt and the log, with a retention policy.
+- **Policy versioning.** Documents load from disk at startup. Needs versions,
+  effective-date checks, and answers pinned to the version that produced them.
+- **Escalation.** Currently returns a message. Should open a ticket carrying the
+  retrieved context, and feed resolved cases back as evaluation data.
 
-## 4. One security / governance concern in financial services
+## 4. One security or governance concern in financial services
 
-Grounded answers about charges, foreclosure terms and KYC are effectively
-regulated communication, so the binding requirement is auditability: for any
-answer given to a customer, the firm must be able to reproduce which policy
-version, which excerpt, and which model produced it. That is why every response
-here carries an exact citation and its retrieval diagnostics, and why the agent
-escalates rather than answering partially. The paired concern is data boundary —
-customer questions carry PII, so redaction before the prompt and exclusion of raw
-payloads from logs are prerequisites, not enhancements.
+Answers about charges, foreclosure terms and KYC are regulated communication, so
+the binding requirement is auditability: for any answer given to a customer, the
+firm must be able to reproduce which policy version and which
+model produced it. That is why every response carries an exact citation and its
+retrieval diagnostics, and why the agent escalates rather than answering
+partially — an unverifiable answer is a worse outcome than no answer.
 
-## 5. AI coding tools used
+## 5. What AI coding tools I used
 
-Built with Claude (Claude Code) in a single session. I used it to draft the
-synthetic policy documents, scaffold the modules, and write the test suite, then
-reviewed and corrected its output — the retrieval scoring metric, the
-three-signal confidence rule and the threshold values were design decisions I
-made and then had it implement. I verified behaviour by running the samples and
-the failure-case tests rather than trusting the generated code as written.
+I built this with Claude Code in a single session. It drafted the synthetic
+policy documents, scaffolded the modules and wrote the test suite. The design
+decisions were mine: the scoring metric, the three-signal confidence rule and
+the thresholds. I reviewed and corrected what it produced rather than accepting
+it, and verified behaviour by running the samples and the failure-case tests.
 
-## Notes
+## Beyond the time box
 
-- `data/policies/` contains **synthetic** documents written for this exercise.
-  They are not real policies of any company.
-- Out of scope by design, per the brief: no auth, database, vector store,
-  deployment or UI.
+Identified but deliberately not built inside the time box.
+
+**Engineering**
+
+- **Version every prompt.** Log which prompt version and model produced each
+  answer; otherwise a prompt edit silently changes answers already given.
+- **Ask for proof.** Make the model quote the sentence it used, and reject the
+  answer if that quote is not verbatim in the excerpt.
+- **Model governance.** Use a model on the security team's approved list, prefer
+  Indian data residency over a global endpoint per RBI localisation, and pin an
+  exact model version so a provider-side upgrade cannot change answers.
+- **Database for run bookkeeping.** Questions, answers, citations, confidence,
+  escalations — for quality trends, audit on demand, and a real evaluation set.
+- **API in front of it.** So the support console, WhatsApp or IVR can call it,
+  separating the interface from the reasoning.
+
+**Further agents**
+
+- **Escalation agent.** Emails the right team with the question, the sections
+  retrieved, and why it declined to answer.
+- **Policy change watcher.** Re-runs past questions when a document changes and
+  flags customers told something now out of date. I would build this first — it
+  closes the auditability loop rather than only recording it.
+- **Grievance triage.** Categorises and routes complaints, tracks the 30-day SLA.
+- **Internal copilot.** Drafts a cited answer for a human to send. Lower risk,
+  and the sensible first production deployment.
+- **KYC document assistant.** Tells the customer which document is missing, or
+  why theirs was rejected.
+
+## Running it
+
+Python 3.9 or newer. `pip install -r requirements.txt`, then a `.env` file in
+the project root holding `GEMINI_API_KEY=...`.
+
+```bash
+streamlit run streamlit_app.py      # the support chat UI
+python -m src.tester.run_batch      # all sample questions -> CSV
+python -m pytest src/tester -q      # tests: offline, no key needed
+```
+
+Deployed on Streamlit Community Cloud, the key goes in the app's Secrets as
+`GEMINI_API_KEY` instead of a `.env` file.
+
+A key is required at runtime; there is no offline fallback. The tests are the
+exception, because they patch the model call with their own stub.
+
+## Known limits
+
+- The policy documents are **synthetic**, written for this exercise. They are
+  not real policies of any company.
+- Sections are found by their numbering, which works because I author these
+  documents. Third-party PDFs would need heading detection from font size and
+  position, plus handling for scans and multi-column layouts.
+- Gemini's free tier allows 5 requests per minute and 20 per day per model, so
+  the batch runner paces itself. Pointing `GEMINI_MODEL` at another model gives
+  a fresh daily budget.
+- Deliberately out of scope, per the brief: no auth, database, vector store or
+  deployment. The UI is intentionally minimal.
 
 ## Layout
 
 ```
-app.py                      local web app (Flask)
+streamlit_app.py            entry point: wires the agent to the UI
 
 src/backend/                the agent
   config.py                 thresholds and settings, all in one place
-  retrieval.py              chunking, IDF index, synonym map
+  retrieval.py              PDF parsing, IDF index, synonym map
   llm.py                    the Gemini call, behind one function
   main.py                   the workflow: contract, confidence, escalation
   query_log.py              appends every answered question to a CSV
 
 src/frontend/               the UI
-  templates/index.html
-  static/style.css
+  ui.py                     the support chat, in plain customer language
 
 src/tester/                 tests, split by what they cover
   test_retrieval.py         does keyword search find the right section?
-  test_llm_connection.py    provider, prompt, schema, retry classification
-  test_agent.py             end-to-end workflow and every failure case
+  test_llm_connection.py    prompt, schema, retry and error classification
+  test_agent.py             the workflow end to end, and every failure case
   test_query_log.py         the usage log, including failing safely
-  run_batch.py              batch runner
+  run_batch.py              runs every sample question, writes a CSV
   outputs/                  CSV results
 
 data/policies/              3 synthetic policy PDFs (what the agent reads)
-data/source/                the Markdown those PDFs are generated from
 data/questions.json         5 sample questions with expected actions
-tools/make_pdfs.py          regenerates the PDFs from the Markdown
 logs/query_log.csv          every question asked through the UI (gitignored)
 ```

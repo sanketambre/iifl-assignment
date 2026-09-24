@@ -1,9 +1,13 @@
 """Shared test setup.
 
-The production code has no offline mode: `src.backend.llm.generate` always calls
-Gemini. So the suite substitutes its own deterministic stub instead, which keeps
-every test offline, free and repeatable. A stub belongs here, in the tests, not
-in the shipped code.
+The shipped code has no offline mode: `generate` always calls Gemini. So the
+tests substitute their own deterministic stub, which keeps every test offline,
+free and repeatable, and means a flaky API or an exhausted quota can never fail
+a test run.
+
+I moved the stub here on purpose. It was originally a "mock provider" inside the
+backend, which meant test scaffolding was shipping with the product. A stand-in
+for the model belongs in the tests that need it.
 """
 
 from __future__ import annotations

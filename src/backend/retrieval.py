@@ -84,11 +84,14 @@ def tokenize(text: str, expand: bool = False) -> List[str]:
     return [_stem(t) for t in tokens]
 
 
-# Section headings are written with this mark by tools/make_pdfs.py. A PDF
-# carries no structural markup, so sections have to be found in the extracted
-# text; an explicit mark is exact, where inferring headings from layout is not.
-# Third-party PDFs would need font-size detection (pdfplumber) instead.
-HEADING_MARK = "§"
+# Sections in the policy PDFs are numbered, as policy documents normally are.
+# A PDF carries no structural markup, so headings have to be recognised in the
+# extracted text, and the numbering is the most reliable signal available that
+# also belongs on the page. Body lists use dashes, so nothing inside a section
+# can be mistaken for a heading. Third-party PDFs would need font-size detection
+# (pdfplumber) instead.
+HEADING_PATTERN = re.compile(r"^(\d{1,2})\.\s+(\S.*)$")
+MAX_HEADING_LENGTH = 80
 
 
 def _read_pdf(path: Path) -> str:
@@ -124,8 +127,8 @@ def load_chunks(policy_dir: Optional[Path] = None) -> List[Chunk]:
         for line in lines[:12]:
             if line.startswith("Document ID:"):
                 meta["doc_id"] = line.split(":", 1)[1].strip()
-            elif not meta.get("title") and line.strip() and HEADING_MARK not in line:
-                meta.setdefault("title", line.strip())
+            elif not meta.get("title") and line.strip():
+                meta["title"] = line.strip()
 
         doc_id = meta.get("doc_id", path.stem)
         title = meta.get("title", path.stem)
@@ -133,11 +136,14 @@ def load_chunks(policy_dir: Optional[Path] = None) -> List[Chunk]:
         section, body = None, []
         for line in lines:
             stripped = line.strip()
-            if stripped.startswith(HEADING_MARK):
+            match = HEADING_PATTERN.match(stripped)
+            if match and len(stripped) <= MAX_HEADING_LENGTH:
                 if section and body:
                     chunks.append(Chunk(doc_id, title, section, "\n".join(body).strip()))
-                section, body = stripped.lstrip(HEADING_MARK).strip(), []
-            elif section is not None:
+                # The number is document formatting, not part of the name, so
+                # citations read "POL-PREPAY-01 / Foreclosure charges".
+                section, body = match.group(2).strip(), []
+            elif section is not None and stripped:
                 body.append(stripped)
         if section and body:
             chunks.append(Chunk(doc_id, title, section, "\n".join(body).strip()))

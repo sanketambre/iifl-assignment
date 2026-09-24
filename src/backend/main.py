@@ -1,12 +1,17 @@
 """The workflow: retrieve, generate, then decide whether to trust the result.
 
-This is a fixed pipeline, not an autonomous agent. Code chooses the policy
-sections; the model only writes the answer from what it is given.
+This is a fixed pipeline, not an autonomous agent, and I chose that on purpose.
+With three small documents and one kind of question there is no routing decision
+worth an LLM: my code picks the policy sections, and the model only writes an
+answer from what it is handed.
 
-Three independent signals must agree before we respond:
+The last step is the part I consider the real work. I do not let the model's own
+confidence decide whether a customer gets an answer, because a model that has
+misread a policy will still sound certain. Three independent signals have to
+agree instead:
   1. retrieval  - did the corpus contain anything relevant?
-  2. generation - did the model consider the excerpts sufficient and grounded?
-  3. citation   - is the source it cited one we actually supplied?
+  2. generation - did the model call the excerpts sufficient and grounded?
+  3. citation   - is the source it returned one I actually supplied?
 Any one failing drops confidence to low, and low confidence escalates.
 """
 

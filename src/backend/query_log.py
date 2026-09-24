@@ -1,14 +1,17 @@
 """Flatten a response into CSV columns, and append it to the usage log.
 
-The flattening lives here rather than in each caller so the usage log and the
+Every question asked through the UI lands here with the answer and the signals
+behind it, so a real run can be reviewed in a spreadsheet afterwards. I put the
+flattening in this file rather than in each caller so the usage log and the
 batch runner cannot drift apart.
 
-Two deliberate choices:
-  - Logging never breaks a request. If the file cannot be written we warn and
-    carry on; a customer should not lose an answer because a disk is full.
-  - The log holds raw customer questions, which in production would contain
-    PII. It is gitignored, and the README notes that redaction before writing
-    is a prerequisite for real deployment.
+Two choices worth stating:
+  - Logging never breaks a request. If the file cannot be written I print a
+    warning and carry on, because a customer should not lose an answer over a
+    full disk.
+  - This log holds raw customer questions, which in production means PII. It is
+    gitignored, and redacting before the write is on my list of things to do
+    before this went anywhere near production.
 """
 
 from __future__ import annotations

@@ -1,8 +1,15 @@
 """The LLM boundary: one function, one implementation.
 
-Everything that knows about Gemini lives here, so swapping providers is a
-single-file change. Tests never reach this module's network path; they patch
-`generate` with their own stub.
+Everything that knows about Gemini lives in this file, so changing provider is a
+one-file change rather than a search through the codebase.
+
+The error handling here is deliberate rather than defensive habit. Building this
+I hit overloaded models, rate limits, an exhausted daily quota and a retired
+model name, so failures are sorted into transient ones worth retrying with the
+server's own suggested delay, and permanent ones where retrying only postpones
+telling the user what is actually wrong.
+
+Tests never reach the network path; they patch `generate` with their own stub.
 """
 
 from __future__ import annotations
